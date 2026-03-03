@@ -1,60 +1,139 @@
-# agent-orb
+<p align="center">
+  <br>
+  <br>
+  <code>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Xx&nbsp;x&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;==+=++;+;;=+++==&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=+;:;:·::··:···::+;;;x&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;:·:··::·············::;+==&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;::::::::·········:::···::·==+==&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:::··::+:::·····.···:·······:·;+;+xX&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:·······:·:·+·+·::····:+;:+:···x;&nbsp;;+xx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;::···:::::····::::··:::;;;::······:=+Xx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:::·:::::·····:::··:::;;;++;::·..···:++xx&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;:··:;;;:::···::····::;;;;+++;··...··:;;=x#&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;::··:;;;::··········:::::;++;:···.·:··:;=xX&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;:·:;;;::·····..····:::::;;;······;····++=&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+;++::::··...·..·········::·.··:······:;+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=++;&nbsp;·····..;······;.....·x··.········::+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;++;::;;·:::;;:::··:;·..x·::····:·:·;::+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;++;:::::···:··:··.;.·:+:;;···:···::;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;;;;:·::··:··:.:;:;:;;:;:·::·::;;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+;;;;:·::··::;:;+;+;+::;::;;;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=+++;+:::::;++;+:::;::;;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+  </code>
+  <br>
+  <br>
+  <strong>agent-orb</strong>
+  <br>
+  <em>A living energy sphere for your terminal.</em>
+  <br>
+  <br>
+  <a href="#install"><img src="https://img.shields.io/badge/python-3.8+-333?logo=python&logoColor=white" alt="Python 3.8+"></a>
+  <a href="#install"><img src="https://img.shields.io/badge/dependencies-zero-333" alt="Zero dependencies"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-333" alt="MIT License"></a>
+</p>
 
-ASCII 3D energy sphere for your terminal. Monitors AI agent activity in tmux and reacts.
+---
 
-![Python 3](https://img.shields.io/badge/python-3.8+-green)
-![No Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+Real-time ASCII 3D sphere rendered in your terminal. Monitors AI agent processes running inside tmux and changes its behavior based on activity — calm when idle, turbulent when your agents are working hard.
 
-## What it does
+Built with zero dependencies. Pure Python. Pure math.
 
-- Renders a rotating 3D sphere with fluid surface deformation in ASCII art
-- Monitors tmux panes for running AI agents (Claude, Codex, etc.)
-- Reacts to agent activity: rotation speed, pulse, surface turbulence increase
-- Displays system stats: CPU, memory, uptime
-- Displays Claude Code daily usage stats (messages, tool calls)
-- Green color gradient via true-color (24-bit) ANSI escapes
+## Demo
 
-## Activity states
+```
+              ·         · ;
+          .  :;:;;==+==x==+;:.
+         ·· ;=+;:·· ·····:;++xx
+        .  :;:··· ·  ·  ····:;+=x
+       .· ::···  · ·   ·  ···::+=xX.
+       ·····:··  · · · ·  · ····;+xXx
+       · ····:;:··:·:··:···:;····:;+xx
+      ·····::;+;;:::::::::;;++;::···:=xX
+      ····:;;++;;::::::::;;++++;;:····;=X%
+      ····:;+++;;::::::::;;++++;;:····;=x%
+      ·····:;+++;;::::::;;+++;+;::····;=x
+       ·····::;+;;::::::;;++;;::·····:+=x
+       · ····::;;:·:;::·:;:;::··:···:;=x
+        ·· ··::·:· :;··· ···::··  ···;+=X
+         · · ::··  ·::·    ···: · ·:;+=.
+          ·  ·;::·· ·;:·· ····:··::;+x
+              :;;::··:::·····:::;;+x·
+                =+;;;;:::::::;;;+.
+                   x=+++;;;;++x
+                             +
 
-| Agents | Status     | Effect                              |
-|--------|------------|-------------------------------------|
-| 0      | DORMANT    | Slow rotation, calm surface         |
-| 1      | ACTIVE     | Moderate rotation, gentle pulse     |
-| 2      | ENGAGED    | Fast rotation, visible turbulence   |
-| 3+     | FULL POWER | Maximum speed, staccato jitter      |
+    CLAUDE TODAY  msgs:742  tools:318
+    CPU [###-------]  28.4%  MEM [######----] 61.2%  UP 02:14:37
+    PANES: 4  AGENTS: 1  STATUS: ACTIVE  14:32:08
+```
 
-## Requirements
+## Features
 
-- Python 3.8+ (no external dependencies)
-- Terminal with true-color support (iTerm2, Kitty, Alacritty, etc.)
-- tmux (for agent monitoring; works without it but shows DORMANT)
+- **3D fluid sphere** — Rotating ASCII sphere with organic surface deformation, rendered with a z-buffer and multi-octave 3D noise
+- **Agent-aware** — Detects Claude / Codex processes in tmux panes by walking the process tree
+- **System dashboard** — CPU, memory, uptime, and Claude Code daily usage (messages & tool calls parsed from session logs)
+- **True-color** — Green gradient shading via 24-bit ANSI escapes (falls back gracefully on unsupported terminals)
+- **Lightweight** — ~20ms render per frame at 8 FPS. No flickering. Background thread for stats collection
+- **Zero dependencies** — Pure Python 3. No pip install needed
+
+## How it reacts
+
+| Agents detected | State | Visual |
+|:-:|:-:|:--|
+| 0 | `DORMANT` | Slow rotation, calm surface |
+| 1 | `ACTIVE` | Moderate speed, gentle pulse |
+| 2 | `ENGAGED` | Fast rotation, turbulent surface, staccato jitter |
+| 3+ | `FULL POWER` | Maximum intensity |
 
 ## Install
 
 ```bash
-# Clone and symlink
 git clone https://github.com/koshibatRL/agent-orb.git
-ln -s $(pwd)/agent-orb/agent-orb ~/bin/agent-orb
+cd agent-orb
+chmod +x agent-orb
 
-# Or just copy
-cp agent-orb/agent-orb ~/bin/
-chmod +x ~/bin/agent-orb
+# Option A: symlink into PATH
+ln -s "$(pwd)/agent-orb" /usr/local/bin/agent-orb
+
+# Option B: copy
+cp agent-orb ~/bin/
 ```
 
 ## Usage
 
 ```bash
-agent-orb
+agent-orb        # run it
+# Ctrl+C to exit
 ```
 
-Press `Ctrl+C` to exit.
+Works best in a dedicated tmux pane alongside your AI agents:
 
-## How it works
+```bash
+tmux split-window -h 'agent-orb'
+```
 
-- 3D sphere rendered via parametric surface sampling with z-buffer
-- Surface texture from multi-octave 3D noise (no polar artifacts)
-- Orthographic projection with character aspect ratio correction
-- Fast sin/cos lookup tables (4096 entries) for performance
-- Background thread for system stats (no render blocking)
-- Wall-clock animation timing for consistent speed
-- ~8 FPS target, ~20ms render time per frame
+## Requirements
+
+| Requirement | Notes |
+|:--|:--|
+| Python 3.8+ | No external packages |
+| True-color terminal | iTerm2, Kitty, Alacritty, WezTerm, Ghostty |
+| tmux | For agent detection. Runs without it (stays DORMANT) |
+
+## Under the hood
+
+The sphere is rendered using the same technique as [`donut.c`](https://www.a1k0n.net/2011/07/20/donut-math.html) — parametric surface sampling with orthographic projection and a z-buffer. On top of that:
+
+- **4-layer 3D noise** for organic surface texture (large blobs → fine swirls)
+- **Radius distortion** from noise values — the silhouette deforms like fluid
+- **Character aspect ratio correction** (2.2:1) for proper circular shape
+- **Fast sin/cos LUT** (4096 entries) — no `math.sin()` in the hot loop
+- **Pre-computed color LUT** (256 entries) — no f-string allocation per pixel
+- **Wall-clock animation timing** — consistent speed regardless of frame drops
+- **Background stats thread** — subprocess calls never block the render loop
+
+## License
+
+MIT
