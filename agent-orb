@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """
-agent-orb - Entity-inspired rotating energy sphere
-ASCII 3D sphere with fluid surface, green color gradient, system stats
+agent-orb - Entity-inspired terminal visualization
+Modes: orb (3D energy sphere) / face (AI face)
 """
 
 import math, sys, time, subprocess, shutil, random, json, os, threading
 
-# Sphere shading: space → densest
 SHADE = " .·:;+=xX#%@$"
 SHADE_N = len(SHADE) - 1
-
-# Aura characters (lighter)
 AURA = " .·:;*"
 AURA_N = len(AURA) - 1
 
@@ -31,7 +28,6 @@ def noise(x, y, z):
             fsin(x*4.0-y*0.5+z*3.2)*0.15 +
             fsin(x*6.1+y*5.3-z*2.7)*0.10)
 
-# Pre-computed color LUTs
 _SPHERE_COL = [f'\x1b[38;2;{int((i/255)**2*55)};{int(25+i*230/255)};{int(i*18/255)}m'
                for i in range(256)]
 _AURA_COL = [f'\x1b[38;2;0;{int(20+i*100/255)};{int(i*55/255)}m'
@@ -113,88 +109,8 @@ def _collect_stats():
         except: pass
         time.sleep(5)
 
-def render(w, h, t, active):
-    al = min(active, 3)
-
-    noise_speed = 0.25 + al * 0.25
-    rot_speed = 0.45 + al * 0.25
-    distortion = 0.22 + al * 0.10
-    pulse_speed = 0.3 + al * 0.3
-    pulse_amp = 0.015 + al * 0.01
-    aura_intensity = 0.3 + al * 0.2
-
-    tj = t
-    if al >= 2 and random.random() < 0.08 * al:
-        tj += random.uniform(-0.15, 0.15) * al
-
-    size = w * h
-    zbuf = [-99.0] * size
-    cbuf = list(' ' * size)
-    colbuf = [''] * size
-
-    cx = w * 0.5
-    cy = h * 0.5
-    radius_rows = cy * 0.70
-
-    breath = fsin(t * pulse_speed) * pulse_amp
-    R = 1.0 + breath
-
-    ry = -t * rot_speed
-    rx = t * rot_speed * 0.35
-    cry, sry = fcos(ry), fsin(ry)
-    crx, srx = fcos(rx), fsin(rx)
-
-    lx = fsin(t * 0.3) * 0.4
-    ly = 0.5
-    lz = -0.85
-    ll = (lx*lx + ly*ly + lz*lz) ** 0.5
-    lx /= ll; ly /= ll; lz /= ll
-
-    nt = tj * noise_speed
-    n_theta = max(40, int(radius_rows * 3))
-    n_phi = max(80, int(radius_rows * 6))
-
-    # ─── Pass 1: Sphere ───
-    for i in range(n_theta + 1):
-        theta = i * PI / n_theta
-        ct = fcos(theta); st = fsin(theta)
-        for j in range(n_phi):
-            phi = j * TAU / n_phi
-            cp = fcos(phi); sp = fsin(phi)
-            nx0 = st * cp; ny0 = ct; nz0 = st * sp
-
-            blob1 = noise(nx0*2.0+nt*0.3, ny0*2.0+nt*0.2, nz0*2.0-nt*0.15)
-            blob2 = noise(nx0*1.3-nt*0.25, ny0*1.8+nt*0.4, nz0*1.5+nt*0.2)
-            turb = noise(nx0*4.0+nt*0.6, ny0*3.5-nt*0.3, nz0*4.2+nt*0.5)
-            fine = noise(nx0*7.0-nt, ny0*6.5+nt*0.8, nz0*7.2-nt*0.6)
-            pattern = blob1*0.35 + blob2*0.25 + turb*0.25 + fine*0.15
-
-            r = R + pattern * distortion
-            px = nx0*r; py = ny0*r; pz = nz0*r
-
-            x2 = px*cry - pz*sry; z2 = px*sry + pz*cry
-            y2 = py*crx - z2*srx; z3 = py*srx + z2*crx
-
-            rnx = nx0*cry - nz0*sry; rnz_ = nx0*sry + nz0*cry
-            rny = ny0*crx - rnz_*srx; rnz = ny0*srx + rnz_*crx
-
-            sx = int(cx + x2*radius_rows*CHAR_ASPECT)
-            sy = int(cy - y2*radius_rows)
-
-            if 0 <= sx < w and 0 <= sy < h:
-                idx = sy*w + sx
-                if z3 > zbuf[idx]:
-                    zbuf[idx] = z3
-                    diff = rnx*lx + rny*ly + rnz*lz
-                    if diff < 0: diff = 0.0
-                    rim = 1.0 - abs(rnz); rim = rim*rim
-                    tex = abs(pattern)*0.5 + abs(blob1)*0.15
-                    lum = diff*0.30 + rim*0.25 + tex + 0.12
-                    if lum > 1.0: lum = 1.0
-                    cbuf[idx] = SHADE[int(lum * SHADE_N)]
-                    colbuf[idx] = _SPHERE_COL[int(lum * 255)]
-
-    # ─── Pass 2: Outer aura ───
+# ─── Shared: aura + output builder ───
+def _render_aura(cbuf, colbuf, w, h, cx, cy, radius_rows, R, t, aura_intensity):
     for y in range(h):
         dy = (y - cy)
         for x in range(w):
@@ -215,7 +131,7 @@ def render(w, h, t, active):
                     cbuf[idx] = AURA[int(min(1.0, intensity) * AURA_N)]
                     colbuf[idx] = _AURA_COL[int(min(1.0, intensity) * 255)]
 
-    # ─── Build output ───
+def _build_lines(cbuf, colbuf, w, h):
     RST = '\x1b[0m'
     lines = []
     for y in range(h):
@@ -240,7 +156,256 @@ def render(w, h, t, active):
         lines.append(''.join(parts))
     return lines
 
+# ═══════════════════════════════════════════
+#  Mode 1: Orb (energy sphere)
+# ═══════════════════════════════════════════
+def render_orb(w, h, t, active):
+    al = min(active, 3)
+    noise_speed = 0.25 + al * 0.25
+    rot_speed = 0.45 + al * 0.25
+    distortion = 0.22 + al * 0.10
+    pulse_speed = 0.3 + al * 0.3
+    pulse_amp = 0.015 + al * 0.01
+    aura_intensity = 0.3 + al * 0.2
+
+    tj = t
+    if al >= 2 and random.random() < 0.08 * al:
+        tj += random.uniform(-0.15, 0.15) * al
+
+    size = w * h
+    zbuf = [-99.0] * size
+    cbuf = list(' ' * size)
+    colbuf = [''] * size
+
+    cx = w * 0.5; cy = h * 0.5
+    radius_rows = cy * 0.70
+    breath = fsin(t * pulse_speed) * pulse_amp
+    R = 1.0 + breath
+
+    ry = -t * rot_speed
+    rx = t * rot_speed * 0.35
+    cry, sry = fcos(ry), fsin(ry)
+    crx, srx = fcos(rx), fsin(rx)
+
+    lx = fsin(t * 0.3) * 0.4; ly = 0.5; lz = -0.85
+    ll = (lx*lx + ly*ly + lz*lz) ** 0.5
+    lx /= ll; ly /= ll; lz /= ll
+
+    nt = tj * noise_speed
+    n_theta = max(40, int(radius_rows * 3))
+    n_phi = max(80, int(radius_rows * 6))
+
+    for i in range(n_theta + 1):
+        theta = i * PI / n_theta
+        ct = fcos(theta); st = fsin(theta)
+        for j in range(n_phi):
+            phi = j * TAU / n_phi
+            cp = fcos(phi); sp = fsin(phi)
+            nx0 = st*cp; ny0 = ct; nz0 = st*sp
+
+            blob1 = noise(nx0*2.0+nt*0.3, ny0*2.0+nt*0.2, nz0*2.0-nt*0.15)
+            blob2 = noise(nx0*1.3-nt*0.25, ny0*1.8+nt*0.4, nz0*1.5+nt*0.2)
+            turb = noise(nx0*4.0+nt*0.6, ny0*3.5-nt*0.3, nz0*4.2+nt*0.5)
+            fine = noise(nx0*7.0-nt, ny0*6.5+nt*0.8, nz0*7.2-nt*0.6)
+            pattern = blob1*0.35 + blob2*0.25 + turb*0.25 + fine*0.15
+
+            r = R + pattern * distortion
+            px = nx0*r; py = ny0*r; pz = nz0*r
+            x2 = px*cry - pz*sry; z2 = px*sry + pz*cry
+            y2 = py*crx - z2*srx; z3 = py*srx + z2*crx
+            rnx = nx0*cry - nz0*sry; rnz_ = nx0*sry + nz0*cry
+            rny = ny0*crx - rnz_*srx; rnz = ny0*srx + rnz_*crx
+
+            sx = int(cx + x2*radius_rows*CHAR_ASPECT)
+            sy = int(cy - y2*radius_rows)
+            if 0 <= sx < w and 0 <= sy < h:
+                idx = sy*w + sx
+                if z3 > zbuf[idx]:
+                    zbuf[idx] = z3
+                    diff = rnx*lx + rny*ly + rnz*lz
+                    if diff < 0: diff = 0.0
+                    rim = 1.0 - abs(rnz); rim = rim*rim
+                    tex = abs(pattern)*0.5 + abs(blob1)*0.15
+                    lum = diff*0.30 + rim*0.25 + tex + 0.12
+                    if lum > 1.0: lum = 1.0
+                    cbuf[idx] = SHADE[int(lum * SHADE_N)]
+                    colbuf[idx] = _SPHERE_COL[int(lum * 255)]
+
+    _render_aura(cbuf, colbuf, w, h, cx, cy, radius_rows, R, t, aura_intensity)
+    return _build_lines(cbuf, colbuf, w, h)
+
+# ═══════════════════════════════════════════
+#  Mode 2: Face (AI face on sphere)
+# ═══════════════════════════════════════════
+def render_face(w, h, t, active):
+    al = min(active, 3)
+    aura_intensity = 0.3 + al * 0.2
+
+    size = w * h
+    zbuf = [-99.0] * size
+    cbuf = list(' ' * size)
+    colbuf = [''] * size
+
+    cx = w * 0.5; cy = h * 0.5
+    radius_rows = cy * 0.70
+    R = 1.0
+
+    # Gentle oscillating head turn (not continuous rotation)
+    ry = fsin(t * 0.25) * 0.30
+    rx = fsin(t * 0.18) * 0.08
+    cry, sry = fcos(ry), fsin(ry)
+    crx, srx = fcos(rx), fsin(rx)
+
+    # Light from upper-left
+    lx, ly, lz = -0.3, 0.6, -0.75
+    ll = (lx*lx + ly*ly + lz*lz) ** 0.5
+    lx /= ll; ly /= ll; lz /= ll
+
+    # Blink: quick close every ~4s
+    blink_phase = t % 4.0
+    blink = max(0.0, 1.0 - blink_phase / 0.15) if blink_phase < 0.15 else 0.0
+
+    # Mouth: activity-based speech animation
+    if al >= 1:
+        mouth_open = abs(fsin(t * (1.8 + al * 0.6))) * (0.2 + al * 0.2)
+    else:
+        mouth_open = fsin(t * 0.5) * 0.05 + 0.05  # subtle breathing
+
+    n_theta = max(40, int(radius_rows * 3))
+    n_phi = max(80, int(radius_rows * 6))
+
+    for i in range(n_theta + 1):
+        theta = i * PI / n_theta
+        ct = fcos(theta); st = fsin(theta)
+        for j in range(n_phi):
+            phi = j * TAU / n_phi
+            cp = fcos(phi); sp = fsin(phi)
+            nx0 = st*cp; ny0 = ct; nz0 = st*sp
+
+            # ─── Face deformations (local coords) ───
+            deform = 0.0
+
+            # Head shape: slight vertical elongation + jaw taper
+            deform += ny0 * ny0 * 0.04
+            if ny0 < -0.2:
+                jaw = (-ny0 - 0.2) * 0.8
+                deform -= jaw * nx0 * nx0 * 0.35
+
+            # Front face features (only when facing viewer)
+            if nz0 < -0.3:
+                front = min(1.0, (-nz0 - 0.3) / 0.5)
+
+                # ── Eye sockets ──
+                for ex in (-0.30, 0.30):
+                    ey, ez = 0.15, -0.94
+                    dx = nx0 - ex; dy = ny0 - ey; dz = nz0 - ez
+                    dist_sq = dx*dx + dy*dy*1.8 + dz*dz
+                    if dist_sq < 0.055:
+                        depth = (1.0 - (dist_sq / 0.055)) ** 1.5
+                        deform -= 0.10 * depth * front * (1.0 - blink * 0.85)
+
+                # ── Eyeballs (slight bump inside socket) ──
+                for ex in (-0.30, 0.30):
+                    ey, ez = 0.14, -0.96
+                    dx = nx0 - ex; dy = ny0 - ey; dz = nz0 - ez
+                    dist_sq = dx*dx + dy*dy*2.0 + dz*dz
+                    if dist_sq < 0.015:
+                        deform += 0.04 * (1.0 - dist_sq / 0.015) * front * (1.0 - blink)
+
+                # ── Brow ridge ──
+                if 0.24 < ny0 < 0.38 and abs(nx0) < 0.48:
+                    brow = (1.0 - abs(ny0 - 0.31) / 0.07)
+                    brow *= (1.0 - (nx0 / 0.48) ** 2)
+                    if brow > 0:
+                        deform += 0.05 * brow * front
+
+                # ── Nose bridge + tip ──
+                nose_w = 0.10
+                if abs(nx0) < nose_w and -0.18 < ny0 < 0.12:
+                    profile = 1.0 - abs(nx0) / nose_w
+                    height = max(0, fsin((ny0 + 0.18) / 0.30 * PI))
+                    deform += 0.08 * profile * height * front
+                # Nose tip bump
+                ntip_dx = nx0; ntip_dy = ny0 + 0.16
+                ntip_d = ntip_dx*ntip_dx + ntip_dy*ntip_dy
+                if ntip_d < 0.012:
+                    deform += 0.04 * (1.0 - ntip_d / 0.012) * front
+
+                # ── Nostrils ──
+                for nox in (-0.06, 0.06):
+                    ndx = nx0 - nox; ndy = ny0 + 0.22
+                    if ndx*ndx + ndy*ndy < 0.004:
+                        deform -= 0.03 * front
+
+                # ── Mouth ──
+                mouth_y = -0.32
+                mdx = nx0; mdy = ny0 - mouth_y
+                mw = 0.20; mh = 0.04 + mouth_open * 0.08
+                if abs(mdx) < mw and abs(mdy) < mh:
+                    mx_n = 1.0 - (mdx / mw) ** 2
+                    my_n = 1.0 - (mdy / mh) ** 2
+                    deform -= 0.06 * mx_n * my_n * front * (0.3 + mouth_open)
+                # Lips (slight ridge around mouth)
+                lip_d = abs(abs(mdy) - mh) if abs(mdx) < mw else 99
+                if lip_d < 0.03:
+                    deform += 0.015 * (1.0 - lip_d / 0.03) * front
+
+                # ── Cheekbones ──
+                for cox in (-0.38, 0.38):
+                    cdx = nx0 - cox; cdy = ny0 + 0.02
+                    cd = cdx*cdx + cdy*cdy
+                    if cd < 0.035:
+                        deform += 0.03 * (1.0 - cd / 0.035) * front
+
+                # ── Chin ──
+                if ny0 < -0.42 and abs(nx0) < 0.13:
+                    chin = (1.0 - abs(nx0)/0.13) * min(1.0, (-ny0 - 0.42) / 0.15)
+                    deform += 0.04 * chin * front
+
+                # ── Subtle skin noise ──
+                deform += noise(nx0*8, ny0*8, nz0*8) * 0.008 * front
+
+            r = R + deform
+            px = nx0*r; py = ny0*r; pz = nz0*r
+
+            x2 = px*cry - pz*sry; z2 = px*sry + pz*cry
+            y2 = py*crx - z2*srx; z3 = py*srx + z2*crx
+            rnx = nx0*cry - nz0*sry; rnz_ = nx0*sry + nz0*cry
+            rny = ny0*crx - rnz_*srx; rnz = ny0*srx + rnz_*crx
+
+            sx = int(cx + x2*radius_rows*CHAR_ASPECT)
+            sy = int(cy - y2*radius_rows)
+            if 0 <= sx < w and 0 <= sy < h:
+                idx = sy*w + sx
+                if z3 > zbuf[idx]:
+                    zbuf[idx] = z3
+                    diff = rnx*lx + rny*ly + rnz*lz
+                    if diff < 0: diff = 0.0
+                    rim = 1.0 - abs(rnz); rim = rim*rim
+
+                    # Deformation-based shading: sockets darker, ridges brighter
+                    feat_dark = max(0, -deform * 4.0)
+                    feat_bright = max(0, deform * 2.5)
+
+                    lum = diff*0.35 + rim*0.18 + feat_bright*0.12 - feat_dark*0.08 + 0.15
+                    if lum < 0: lum = 0.0
+                    if lum > 1.0: lum = 1.0
+                    cbuf[idx] = SHADE[int(lum * SHADE_N)]
+                    colbuf[idx] = _SPHERE_COL[int(lum * 255)]
+
+    _render_aura(cbuf, colbuf, w, h, cx, cy, radius_rows, R, t, aura_intensity)
+    return _build_lines(cbuf, colbuf, w, h)
+
+# ═══════════════════════════════════════════
+#  Main loop
+# ═══════════════════════════════════════════
 def main():
+    mode = 'orb'
+    if '--face' in sys.argv:
+        mode = 'face'
+
+    renderer = render_face if mode == 'face' else render_orb
+
     sys.stdout.write('\x1b[?25l\x1b[2J')
     sys.stdout.flush()
     uptime_start = time.monotonic()
@@ -271,7 +436,7 @@ def main():
             rh = min(thl - 4, 50)
             if rh < 8: rh = 8
 
-            frame = render(rw, rh, t, active)
+            frame = renderer(rw, rh, t, active)
 
             px = max(0, (tw - rw) // 2)
             py_ = max(0, (thl - len(frame) - 3) // 2)
@@ -283,31 +448,33 @@ def main():
             for line in frame:
                 buf.append(pad + line + '\x1b[K\n')
 
-            rem = thl - py_ - len(frame)
-            for i in range(max(0, rem)):
-                if i == rem - 4:
-                    cl = f'CLAUDE TODAY  msgs:{today_msgs}  tools:{today_tools}'
-                    sp = max(0, (tw - len(cl)) // 2)
-                    buf.append(' '*sp + f'\x1b[2m{cl}\x1b[0m\x1b[K\n')
-                elif i == rem - 3:
-                    bar_cpu = min(10, int(cpu_val / 100 * 10))
-                    bar_mem = min(10, int(mem_val / 100 * 10))
-                    cpu_bar = '#' * bar_cpu + '-' * (10 - bar_cpu)
-                    mem_bar = '#' * bar_mem + '-' * (10 - bar_mem)
-                    tech = (f'CPU [{cpu_bar}] {cpu_val:5.1f}%  '
-                            f'MEM [{mem_bar}] {mem_val:4.1f}%  '
-                            f'UP {uptime_h:02d}:{uptime_m:02d}:{uptime_s:02d}')
-                    sp = max(0, (tw - len(tech)) // 2)
-                    buf.append(' '*sp + f'\x1b[2m{tech}\x1b[0m\x1b[K\n')
-                elif i == rem - 2:
-                    status = ['DORMANT','ACTIVE','ENGAGED','FULL POWER'][min(active, 3)]
-                    st = f'PANES: {panes}  AGENTS: {active}  STATUS: {status}  {time.strftime("%H:%M:%S")}'
-                    sp = max(0, (tw - len(st)) // 2)
-                    buf.append(' '*sp + f'\x1b[2m{st}\x1b[0m\x1b[K\n')
-                elif i == rem - 1:
-                    buf.append('\x1b[K')
-                else:
-                    buf.append('\x1b[K\n')
+            # Status lines: 1 blank line after sphere, then 3 status lines
+            buf.append('\x1b[K\n')
+
+            cl = f'CLAUDE TODAY  msgs:{today_msgs}  tools:{today_tools}'
+            sp = max(0, (tw - len(cl)) // 2)
+            buf.append(' '*sp + f'\x1b[2m{cl}\x1b[0m\x1b[K\n')
+
+            bar_cpu = min(10, int(cpu_val / 100 * 10))
+            bar_mem = min(10, int(mem_val / 100 * 10))
+            cpu_bar = '#' * bar_cpu + '-' * (10 - bar_cpu)
+            mem_bar = '#' * bar_mem + '-' * (10 - bar_mem)
+            tech = (f'CPU [{cpu_bar}] {cpu_val:5.1f}%  '
+                    f'MEM [{mem_bar}] {mem_val:4.1f}%  '
+                    f'UP {uptime_h:02d}:{uptime_m:02d}:{uptime_s:02d}')
+            sp = max(0, (tw - len(tech)) // 2)
+            buf.append(' '*sp + f'\x1b[2m{tech}\x1b[0m\x1b[K\n')
+
+            status = ['DORMANT','ACTIVE','ENGAGED','FULL POWER'][min(active, 3)]
+            ml = f'MODE: {mode.upper()}  ' if mode == 'face' else ''
+            st = f'PANES: {panes}  AGENTS: {active}  STATUS: {status}  {ml}{time.strftime("%H:%M:%S")}'
+            sp = max(0, (tw - len(st)) // 2)
+            buf.append(' '*sp + f'\x1b[2m{st}\x1b[0m\x1b[K\n')
+
+            # Clear remaining lines below
+            lines_used = py_ + len(frame) + 4
+            for _ in range(max(0, thl - lines_used)):
+                buf.append('\x1b[K\n')
 
             sys.stdout.write(''.join(buf))
             sys.stdout.flush()
