@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""
+agent-orb - Entity-inspired rotating energy sphere
+ASCII 3D sphere with fluid surface, green color gradient, system stats
+"""
+
+import math, sys, time, subprocess, shutil, random, json, os, threading
+
+# Sphere shading: space → densest
+SHADE = " .·:;+=xX#%@$"
+SHADE_N = len(SHADE) - 1
+
+# Aura characters (lighter)
+AURA = " .·:;*"
+AURA_N = len(AURA) - 1
+
+PI = math.pi
+TAU = PI * 2
+CHAR_ASPECT = 2.2
+
+_N = 4096
+_S = [math.sin(i * TAU / _N) for i in range(_N)]
+_C = [math.cos(i * TAU / _N) for i in range(_N)]
+def fsin(x): return _S[int(x % TAU * 651.8986) % _N]
+def fcos(x): return _C[int(x % TAU * 651.8986) % _N]
+
+def noise(x, y, z):
+    return (fsin(x*1.3+y*3.2+z*0.7)*0.30 +
+            fsin(x*2.5-y*1.1+z*1.9)*0.25 +
+            fsin(x*0.6+y*2.8-z*2.1)*0.20 +
+            fsin(x*4.0-y*0.5+z*3.2)*0.15 +
+            fsin(x*6.1+y*5.3-z*2.7)*0.10)
+
+# Pre-computed color LUTs
+_SPHERE_COL = [f'\x1b[38;2;{int((i/255)**2*55)};{int(25+i*230/255)};{int(i*18/255)}m'
+               for i in range(256)]
+_AURA_COL = [f'\x1b[38;2;0;{int(20+i*100/255)};{int(i*55/255)}m'
+             for i in range(256)]
+
+# ─── Background stats collector ───
+_st = {'panes': 0, 'active': 0, 'cpu': 0.0, 'mem': 0.0, 'msgs': 0, 'tools': 0}
+
+def _collect_stats():
+    while True:
+        try:
+            r = subprocess.run(['tmux','list-panes','-a','-F','#{pane_pid}'],
+                              capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                pids = set(r.stdout.strip().split('\n'))
+                _st['panes'] = len(pids)
+                ar = subprocess.run(['pgrep','-a','claude|codex'],
+                                   capture_output=True, text=True, timeout=2)
+                count = 0
+                if ar.returncode == 0:
+                    for line in ar.stdout.strip().split('\n'):
+                        if not line: continue
+                        cpid = line.split(None,1)[0]
+                        for _ in range(15):
+                            if cpid in pids: count += 1; break
+                            try:
+                                p = subprocess.run(['ps','-o','ppid=','-p',cpid],
+                                                  capture_output=True, text=True, timeout=1)
+                                cpid = p.stdout.strip()
+                                if not cpid or cpid in ('0','1'): break
+                            except: break
+                _st['active'] = count
+        except: pass
+        try:
+            cores = int(subprocess.run(['sysctl','-n','hw.ncpu'],
+                       capture_output=True, text=True, timeout=1).stdout.strip())
+            r = subprocess.run(['ps', '-A', '-o', '%cpu'],
+                              capture_output=True, text=True, timeout=2)
+            raw = sum(float(x) for x in r.stdout.strip().split('\n')[1:] if x.strip())
+            _st['cpu'] = raw / cores
+        except: pass
+        try:
+            r = subprocess.run(['vm_stat'], capture_output=True, text=True, timeout=2)
+            pf = pa = ps = pw = 0
+            for line in r.stdout.split('\n'):
+                if 'free' in line: pf = int(''.join(c for c in line.split(':')[1] if c.isdigit()))
+                elif 'active' in line and 'inactive' not in line: pa = int(''.join(c for c in line.split(':')[1] if c.isdigit()))
+                elif 'speculative' in line: ps = int(''.join(c for c in line.split(':')[1] if c.isdigit()))
+                elif 'wired' in line and 'purgeable' not in line: pw = int(''.join(c for c in line.split(':')[1] if c.isdigit()))
+            total = pf + pa + ps + pw
+            if total > 0: _st['mem'] = (pa + pw) / total * 100
+        except: pass
+        try:
+            today = time.strftime('%Y-%m-%d')
+            t_msgs = 0; t_tools = 0
+            pdir = os.path.expanduser('~/.claude/projects/')
+            for root, dirs, files in os.walk(pdir):
+                if 'subagents' in root: continue
+                for fn in files:
+                    if not fn.endswith('.jsonl'): continue
+                    fp = os.path.join(root, fn)
+                    try:
+                        mdate = time.strftime('%Y-%m-%d',
+                            time.localtime(os.path.getmtime(fp)))
+                        if mdate != today: continue
+                        with open(fp) as fh:
+                            for line in fh:
+                                line = line.strip()
+                                if not line or '"assistant"' not in line: continue
+                                try: d = json.loads(line)
+                                except: continue
+                                if d.get('type') != 'assistant': continue
+                                t_msgs += 1
+                                for blk in d.get('message',{}).get('content',[]):
+                                    if isinstance(blk, dict) and blk.get('type') == 'tool_use':
+                                        t_tools += 1
+                    except: pass
+            _st['msgs'] = t_msgs; _st['tools'] = t_tools
+        except: pass
+        time.sleep(5)
+
+def render(w, h, t, active):
+    al = min(active, 3)
+
+    noise_speed = 0.25 + al * 0.25
+    rot_speed = 0.45 + al * 0.25
+    distortion = 0.22 + al * 0.10
+    pulse_speed = 0.3 + al * 0.3
+    pulse_amp = 0.015 + al * 0.01
+    aura_intensity = 0.3 + al * 0.2
+
+    tj = t
+    if al >= 2 and random.random() < 0.08 * al:
+        tj += random.uniform(-0.15, 0.15) * al
+
+    size = w * h
+    zbuf = [-99.0] * size
+    cbuf = list(' ' * size)
+    colbuf = [''] * size
+
+    cx = w * 0.5
+    cy = h * 0.5
+    radius_rows = cy * 0.70
+
+    breath = fsin(t * pulse_speed) * pulse_amp
+    R = 1.0 + breath
+
+    ry = -t * rot_speed
+    rx = t * rot_speed * 0.35
+    cry, sry = fcos(ry), fsin(ry)
+    crx, srx = fcos(rx), fsin(rx)
+
+    lx = fsin(t * 0.3) * 0.4
+    ly = 0.5
+    lz = -0.85
+    ll = (lx*lx + ly*ly + lz*lz) ** 0.5
+    lx /= ll; ly /= ll; lz /= ll
+
+    nt = tj * noise_speed
+    n_theta = max(40, int(radius_rows * 3))
+    n_phi = max(80, int(radius_rows * 6))
+
+    # ─── Pass 1: Sphere ───
+    for i in range(n_theta + 1):
+        theta = i * PI / n_theta
+        ct = fcos(theta); st = fsin(theta)
+        for j in range(n_phi):
+            phi = j * TAU / n_phi
+            cp = fcos(phi); sp = fsin(phi)
+            nx0 = st * cp; ny0 = ct; nz0 = st * sp
+
+            blob1 = noise(nx0*2.0+nt*0.3, ny0*2.0+nt*0.2, nz0*2.0-nt*0.15)
+            blob2 = noise(nx0*1.3-nt*0.25, ny0*1.8+nt*0.4, nz0*1.5+nt*0.2)
+            turb = noise(nx0*4.0+nt*0.6, ny0*3.5-nt*0.3, nz0*4.2+nt*0.5)
+            fine = noise(nx0*7.0-nt, ny0*6.5+nt*0.8, nz0*7.2-nt*0.6)
+            pattern = blob1*0.35 + blob2*0.25 + turb*0.25 + fine*0.15
+
+            r = R + pattern * distortion
+            px = nx0*r; py = ny0*r; pz = nz0*r
+
+            x2 = px*cry - pz*sry; z2 = px*sry + pz*cry
+            y2 = py*crx - z2*srx; z3 = py*srx + z2*crx
+
+            rnx = nx0*cry - nz0*sry; rnz_ = nx0*sry + nz0*cry
+            rny = ny0*crx - rnz_*srx; rnz = ny0*srx + rnz_*crx
+
+            sx = int(cx + x2*radius_rows*CHAR_ASPECT)
+            sy = int(cy - y2*radius_rows)
+
+            if 0 <= sx < w and 0 <= sy < h:
+                idx = sy*w + sx
+                if z3 > zbuf[idx]:
+                    zbuf[idx] = z3
+                    diff = rnx*lx + rny*ly + rnz*lz
+                    if diff < 0: diff = 0.0
+                    rim = 1.0 - abs(rnz); rim = rim*rim
+                    tex = abs(pattern)*0.5 + abs(blob1)*0.15
+                    lum = diff*0.30 + rim*0.25 + tex + 0.12
+                    if lum > 1.0: lum = 1.0
+                    cbuf[idx] = SHADE[int(lum * SHADE_N)]
+                    colbuf[idx] = _SPHERE_COL[int(lum * 255)]
+
+    # ─── Pass 2: Outer aura ───
+    for y in range(h):
+        dy = (y - cy)
+        for x in range(w):
+            idx = y*w + x
+            if cbuf[idx] != ' ': continue
+            dx = (x - cx) / CHAR_ASPECT
+            dist = (dx*dx + dy*dy) ** 0.5
+            sphere_edge = radius_rows * R
+            aura_outer = sphere_edge * 1.35
+            if dist > sphere_edge * 0.95 and dist < aura_outer:
+                edge_dist = (dist - sphere_edge*0.95) / (aura_outer - sphere_edge*0.95)
+                fade = (1.0 - edge_dist) ** 2
+                angle = math.atan2(dy, dx)
+                wave = fsin(angle*8 + t*2.0)*0.5 + 0.5
+                wave2 = fsin(angle*13 - t*3.0)*0.5 + 0.5
+                intensity = fade * (0.3 + wave*0.4 + wave2*0.2) * aura_intensity
+                if intensity > 0.05:
+                    cbuf[idx] = AURA[int(min(1.0, intensity) * AURA_N)]
+                    colbuf[idx] = _AURA_COL[int(min(1.0, intensity) * 255)]
+
+    # ─── Build output ───
+    RST = '\x1b[0m'
+    lines = []
+    for y in range(h):
+        off = y * w
+        parts = []
+        prev_col = ''
+        for x in range(w):
+            i = off + x
+            col = colbuf[i]
+            if col:
+                if col != prev_col:
+                    parts.append(col)
+                    prev_col = col
+                parts.append(cbuf[i])
+            else:
+                if prev_col:
+                    parts.append(RST)
+                    prev_col = ''
+                parts.append(cbuf[i])
+        if prev_col:
+            parts.append(RST)
+        lines.append(''.join(parts))
+    return lines
+
+def main():
+    sys.stdout.write('\x1b[?25l\x1b[2J')
+    sys.stdout.flush()
+    uptime_start = time.monotonic()
+    anim_start = uptime_start
+
+    sth = threading.Thread(target=_collect_stats, daemon=True)
+    sth.start()
+
+    try:
+        while True:
+            t0 = time.monotonic()
+            t = t0 - anim_start
+
+            active = _st['active']
+            panes = _st['panes']
+            cpu_val = _st['cpu']
+            mem_val = _st['mem']
+            today_msgs = _st['msgs']
+            today_tools = _st['tools']
+
+            uptime_sec = int(t0 - uptime_start)
+            uptime_m, uptime_s = divmod(uptime_sec, 60)
+            uptime_h, uptime_m = divmod(uptime_m, 60)
+
+            ts = shutil.get_terminal_size()
+            tw, thl = ts.columns, ts.lines
+            rw = min(tw, 100)
+            rh = min(thl - 4, 50)
+            if rh < 8: rh = 8
+
+            frame = render(rw, rh, t, active)
+
+            px = max(0, (tw - rw) // 2)
+            py_ = max(0, (thl - len(frame) - 3) // 2)
+
+            buf = ['\x1b[H']
+            pad = ' ' * px
+            for _ in range(py_):
+                buf.append('\x1b[K\n')
+            for line in frame:
+                buf.append(pad + line + '\x1b[K\n')
+
+            rem = thl - py_ - len(frame)
+            for i in range(max(0, rem)):
+                if i == rem - 4:
+                    cl = f'CLAUDE TODAY  msgs:{today_msgs}  tools:{today_tools}'
+                    sp = max(0, (tw - len(cl)) // 2)
+                    buf.append(' '*sp + f'\x1b[2m{cl}\x1b[0m\x1b[K\n')
+                elif i == rem - 3:
+                    bar_cpu = min(10, int(cpu_val / 100 * 10))
+                    bar_mem = min(10, int(mem_val / 100 * 10))
+                    cpu_bar = '#' * bar_cpu + '-' * (10 - bar_cpu)
+                    mem_bar = '#' * bar_mem + '-' * (10 - bar_mem)
+                    tech = (f'CPU [{cpu_bar}] {cpu_val:5.1f}%  '
+                            f'MEM [{mem_bar}] {mem_val:4.1f}%  '
+                            f'UP {uptime_h:02d}:{uptime_m:02d}:{uptime_s:02d}')
+                    sp = max(0, (tw - len(tech)) // 2)
+                    buf.append(' '*sp + f'\x1b[2m{tech}\x1b[0m\x1b[K\n')
+                elif i == rem - 2:
+                    status = ['DORMANT','ACTIVE','ENGAGED','FULL POWER'][min(active, 3)]
+                    st = f'PANES: {panes}  AGENTS: {active}  STATUS: {status}  {time.strftime("%H:%M:%S")}'
+                    sp = max(0, (tw - len(st)) // 2)
+                    buf.append(' '*sp + f'\x1b[2m{st}\x1b[0m\x1b[K\n')
+                elif i == rem - 1:
+                    buf.append('\x1b[K')
+                else:
+                    buf.append('\x1b[K\n')
+
+            sys.stdout.write(''.join(buf))
+            sys.stdout.flush()
+
+            el = time.monotonic() - t0
+            time.sleep(max(0.005, 0.125 - el))  # 8 FPS
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sys.stdout.write('\x1b[?25h\x1b[2J\x1b[H')
+        sys.stdout.flush()
+
+if __name__ == '__main__':
+    main()
